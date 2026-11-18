@@ -110,16 +110,60 @@ footer{margin:0 -20px;padding:28px 18px 32px;text-align:center;background:#03081
 // ===== EDIT THESE VALUES BEFORE DEPLOYING =====
 const TELEGRAM_CHANNEL_LINK = "https://t.me/+JIud_L1r9LBjMzhl";
 const META_PIXEL_ID = "1659683625829537";
+const TRACKING_API = "https://multiplyadstracking.vercel.app/api/create-invite";
+const CLIENT_SLUG = "manraj";
 // ==============================================
 document.getElementById('year').textContent = new Date().getFullYear();
-document.getElementById('telegramJoin').href = TELEGRAM_CHANNEL_LINK;
-document.getElementById('telegramFloat').href = TELEGRAM_CHANNEL_LINK;
-if (/^\d+$/.test(META_PIXEL_ID)) {
-  !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+if (/^\\d+$/.test(META_PIXEL_ID)) {
+  !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(n)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
   fbq('init',META_PIXEL_ID);fbq('track','PageView');
 }
-document.getElementById('telegramJoin').addEventListener('click',function(){if(window.fbq)fbq('track','Contact')});
-document.getElementById('telegramFloat').addEventListener('click',function(){if(window.fbq)fbq('track','Contact')});
+let invitePromise = null;
+let inviteUrl = null;
+function getInvite() {
+  if (inviteUrl) return Promise.resolve(inviteUrl);
+  if (invitePromise) return invitePromise;
+  const params = new URLSearchParams(location.search);
+  const payload = {
+    client_slug: CLIENT_SLUG,
+    landing_url: location.href,
+    referrer: document.referrer || null,
+    fbclid: params.get('fbclid'),
+    fbc: document.cookie.split('; ').find(x => x.startsWith('_fbc='))?.split('=').slice(1).join('=') || null,
+    fbp: document.cookie.split('; ').find(x => x.startsWith('_fbp='))?.split('=').slice(1).join('=') || null
+  };
+  invitePromise = fetch(TRACKING_API, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload),
+    keepalive: true
+  }).then(async response => {
+    const data = await response.json();
+    if (!response.ok || !data.invite_url) throw new Error(data.error || 'Invite API failed');
+    inviteUrl = data.invite_url;
+    return inviteUrl;
+  }).catch(error => {
+    console.warn('Telegram invite prefetch failed:', error.message);
+    invitePromise = null;
+    return null;
+  });
+  return invitePromise;
+}
+function openTelegram(event) {
+  event.preventDefault();
+  const anchor = event.currentTarget;
+  if (window.fbq) fbq('track','Contact');
+  if (inviteUrl) { location.href = inviteUrl; return; }
+  anchor.setAttribute('aria-busy','true');
+  getInvite().then(url => {
+    location.href = url || TELEGRAM_CHANNEL_LINK;
+  });
+}
+document.getElementById('telegramJoin').addEventListener('click',openTelegram);
+document.getElementById('telegramFloat').addEventListener('click',openTelegram);
+// Warm the invite in the background so the tap opens Telegram without waiting.
+if ('requestIdleCallback' in window) requestIdleCallback(() => getInvite(), {timeout:1200});
+else window.addEventListener('load', () => setTimeout(() => getInvite(), 150));
 </script>
 </body>
 </html>
